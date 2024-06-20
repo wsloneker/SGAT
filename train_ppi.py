@@ -159,6 +159,7 @@ def main(args):
         feats = feats.to(device)
         labels = labels.to(device)
         test_score_list.append(evaluate(feats, model, subgraph, labels.float(), loss_fcn)[0])
+        print(subgraph.shape)
     acc = np.array(test_score_list).mean()
     print("test F1-Score: {:.4f}".format(acc))
     writer.close()
