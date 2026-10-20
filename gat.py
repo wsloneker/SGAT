@@ -190,7 +190,7 @@ class GAT(nn.Module):
         self.gat_layers.append(GraphAttention(
             g, in_dim, num_hidden, heads[0], feat_drop, attn_drop, alpha,bias_l0, False, l0=l0, min=0))
         # hidden layers
-        for l in range(1, num_layers):
+        for l in range(1, num_layers + 1):
             # due to multi-head, the in_dim = num_hidden * num_heads
             self.gat_layers.append(GraphAttention(
                 g, num_hidden * heads[l-1], num_hidden, heads[l],
