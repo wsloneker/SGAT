@@ -9,10 +9,33 @@ Pytorch implementation: https://github.com/Diego999/pyGAT
 
 import torch
 import torch.nn as nn
-import dgl.function as fn
-from dgl.nn.pytorch import edge_softmax
+# import dgl.function as fn
+# from dgl.nn.pytorch import edge_softmax
 import numpy as np
 import torch.nn.functional as F
+
+def edge_softmax(graph, logits, norm_by="dst"):
+    if not is_all(eids):
+        eids = astype(eids, graph.idtype)
+    if graph._graph.number_of_etypes() == 1:
+        return edge_softmax_internal(
+            graph._graph, logits, eids=eids, norm_by=norm_by
+        )
+    else:
+        logits_list = [None] * graph._graph.number_of_etypes()
+        logits = {graph.to_canonical_etype(k): v for k, v in logits.items()}
+        for rel in graph.canonical_etypes:
+            etid = graph.get_etype_id(rel)
+            logits_list[etid] = logits[rel]
+        logits_tuple = tuple(logits_list)
+        score_tuple = edge_softmax_hetero_internal(
+            graph._graph, eids, norm_by, *logits_tuple
+        )
+        score = {}
+        for rel in graph.canonical_etypes:
+            etid = graph.get_etype_id(rel)
+            score[rel] = score_tuple[etid]
+        return score
 
 sig = nn.Sigmoid()
 hardtanh = nn.Hardtanh(0,1)
