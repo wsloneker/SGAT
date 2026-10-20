@@ -3,18 +3,19 @@ import time
 from time import localtime
 import torch
 import torch.nn.functional as F
-from dgl import DGLGraph
-from dgl.data import register_data_args, load_data
+# from dgl import DGLGraph
+# from dgl.data import register_data_args, load_data
 from gat import GAT
 from torch.utils.tensorboard import SummaryWriter
 import random
 from torch.backends import cudnn
 # from reddit import RedditDataset
-from ms import MsDataset
+# from ms import MsDataset
 import networkx as nx
 import numpy as np
 from utils import EarlyStopping
-
+from torch_geometric.datasets import Planetoid
+from torch_geometric.utils import coalesce
 
 def accuracy(logits, labels):
     _, indices = torch.max(logits, dim=1)
@@ -34,10 +35,16 @@ def set_seeds(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if args.gpu >= 0:
-        torch.cuda.manual_seed(seed)
-        cudnn.benchmark = False
-        cudnn.deterministic = True
+    torch.cuda.manual_seed(seed)
+    cudnn.benchmark = False
+    cudnn.deterministic = True
+
+def remove_edges(edge_index, removed_edge_index):
+    all_edge_index = torch.cat([edge_index, removed_edge_index], dim=1)
+    all_edge_weights = torch.cat([torch.zeros(edge_index.size(1)), torch.ones(removed_edge_index.size(1))])
+    all_edge_index, all_edge_weights = coalesce(all_edge_index, all_edge_weights)
+    remaining_edge_index = all_edge_index[:, all_edge_weights ==0]
+    return remaining_edge_index
 
 def main(args):
     # load and preprocess dataset
@@ -46,18 +53,18 @@ def main(args):
     elif args.dataset in ['photo', "computer"]:
         data = MsDataset(args)
     else:
-        data = load_data(args)
+        data = Planetoid('tmp/', name=args.dataset)
 
-    features = torch.FloatTensor(data.features)
-    labels = torch.LongTensor(data.labels)
-    train_mask = torch.ByteTensor(data.train_mask)
-    val_mask = torch.ByteTensor(data.val_mask)
-    test_mask = torch.ByteTensor(data.test_mask)
+    features = torch.FloatTensor(data.x)
+    labels = torch.LongTensor(data.y)
+    train_mask = data.train_mask
+    val_mask = data.val_mask
+    test_mask = data.test_mask
     num_feats = features.shape[1]
-    n_classes = data.num_labels
-    n_edges = data.graph.number_of_edges()
+    n_classes = data.num_classes
+    n_edges = data.edge_index.shape[1]
     current_time = time.strftime('%d_%H:%M:%S', localtime())
-    writer = SummaryWriter(log_dir='runs/' + current_time + '_' + args.sess, flush_secs=30)
+    # writer = SummaryWriter(log_dir='runs/' + current_time + '_' + args.sess, flush_secs=30)
 
     print("""----Data statistics------'
       #Edges %d
@@ -70,25 +77,17 @@ def main(args):
            val_mask.sum().item(),
            test_mask.sum().item()))
 
-    if args.gpu < 0:
-        cuda = False
-    else:
-        cuda = True
-        torch.cuda.set_device(args.gpu)
-        features = features.cuda()
-        labels = labels.cuda()
-        train_mask = train_mask.bool().cuda()
-        val_mask = val_mask.bool().cuda()
-        test_mask = test_mask.bool().cuda()
 
-
-    g = data.graph
-    # add self loop
-    if args.dataset != 'reddit':
-        g.remove_edges_from(nx.selfloop_edges(g))
-        g = DGLGraph(g)
-    g.add_edges(g.nodes(), g.nodes())
-    n_edges = g.number_of_edges()
+    g = data.edge_index
+    # # add self loop
+    # if args.dataset != 'reddit':
+    #     removed = nx.selfloop_edges(g.numpy())
+    #     removed_edge_index = torch.tensor(removed, dtype=torch.int64)
+    #     g = remove_edges(edge_index, removed_edge_index)
+    #     # g.remove_edges_from(nx.selfloop_edges(g))
+    #     # g = DGLGraph(g)
+    # g.add_edges(g.nodes(), g.nodes())
+    # n_edges = g.number_of_edges()
     print('edge number %d'%(n_edges))
     # create model
     heads = ([args.num_heads] * args.num_layers) + [args.num_out_heads]
@@ -108,8 +107,8 @@ def main(args):
     print(model)
     if args.early_stop:
         stopper = EarlyStopping(patience=150)
-    if cuda:
-        model.cuda()
+    # if cuda:
+    #     model.cuda()
     loss_fcn = torch.nn.CrossEntropyLoss()
 
     # use optimizer
@@ -164,9 +163,9 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='GAT')
-    register_data_args(parser)
-    parser.add_argument("--gpu", type=int, default=-1,
-                        help="which GPU to use. Set -1 to use CPU.")
+    # register_data_args(parser)
+    parser.add_argument("--dataset", type=str, default='Cora',
+                        help='which dataset to train model on')
     parser.add_argument("--epochs", type=int, default=200,
                         help="number of training epochs")
     parser.add_argument("--num-heads", type=int, default=8,
