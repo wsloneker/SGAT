@@ -15,7 +15,7 @@ import networkx as nx
 import numpy as np
 from utils import EarlyStopping
 from torch_geometric.datasets import Planetoid
-from torch_geometric.utils import coalesce
+from torch_geometric.utils import coalesce, to_dgl
 
 def accuracy(logits, labels):
     _, indices = torch.max(logits, dim=1)
@@ -79,6 +79,7 @@ def main(args):
 
 
     g = data.edge_index
+    g = to_dgl(g)
     # # add self loop
     # if args.dataset != 'reddit':
     #     removed = nx.selfloop_edges(g.numpy())
